@@ -483,7 +483,14 @@ RState	NormalInput( Green_RTD *rtd, SDL_Event *event, unsigned short *flags )
 		case SDLK_k:
 			if (!doc)
 				break;
-			Green_ScrollRelative( doc, 0, - display->h * rtd->step, display->w, display->h, 1 );
+			
+			// In side-by-side mode, check if we're at the top and need to go to previous page pair
+			if (rtd->side_by_side && doc->yoffset == 0) {
+				if (!Green_GotoPage( doc, doc->page_cur - 2, true ))
+					break;
+			} else {
+				Green_ScrollRelative( doc, 0, - display->h * rtd->step, display->w, display->h, 1 );
+			}
 			*flags |= FLAG_RENDER;
 			break;
 		case SDLK_DOWN:
@@ -497,7 +504,19 @@ RState	NormalInput( Green_RTD *rtd, SDL_Event *event, unsigned short *flags )
 			if (!doc)
 				break;
 			
-			Green_ScrollRelative( doc, 0, display->h * rtd->step, display->w, display->h, 1 );
+			// In side-by-side mode, check if we're at the bottom and need to go to next page pair
+			if (rtd->side_by_side) {
+				int max_x, max_y;
+				Green_GetScrollRegion( doc, display->w, display->h, &max_x, &max_y );
+				if (doc->yoffset >= max_y) {
+					if (!Green_GotoPage( doc, doc->page_cur + 2, true ))
+						break;
+				} else {
+					Green_ScrollRelative( doc, 0, display->h * rtd->step, display->w, display->h, 1 );
+				}
+			} else {
+				Green_ScrollRelative( doc, 0, display->h * rtd->step, display->w, display->h, 1 );
+			}
 			*flags |= FLAG_RENDER;
 			break;
 		case SDLK_LEFT:
