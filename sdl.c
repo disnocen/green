@@ -113,7 +113,7 @@ void	GetInput( IBuffer *input, SDL_Event *event )
 	return;
 }
 
-void	RenderPage( Green_RTD *rtd, SDL_Rect dest, int xoff, int yoff, PopplerPage *page, double tscale )
+void	RenderPage( Green_RTD *rtd, SDL_Rect dest, int xoff, int yoff, PopplerPage *page, double tscale, int page_num )
 {
 	PopplerRectangle	*rect;
 	Green_Document	*doc = rtd->docs[rtd->doc_cur];
@@ -133,7 +133,7 @@ void	RenderPage( Green_RTD *rtd, SDL_Rect dest, int xoff, int yoff, PopplerPage 
 	if (doc->search_str)
 		list = poppler_page_find_text( page, doc->search_str );
 
-	if (doc->cache.surface && doc->cache.page == doc->page_cur && doc->cache.tscale == tscale)
+	if (doc->cache.surface && doc->cache.page == page_num && doc->cache.tscale == tscale)
 		surface = doc->cache.surface;
 	else
 	{
@@ -152,7 +152,7 @@ void	RenderPage( Green_RTD *rtd, SDL_Rect dest, int xoff, int yoff, PopplerPage 
 			cairo_surface_destroy( doc->cache.surface );
 
 		doc->cache.surface = surface;
-		doc->cache.page = doc->page_cur;
+		doc->cache.page = page_num;
 		doc->cache.tscale = tscale;
 	}
 
@@ -350,7 +350,7 @@ void	Render( Green_RTD *rtd )
 	SDL_Surface	*display = SDL_GetVideoSurface();
 	SDL_Rect	rect;
 	double	tscale;
-	int	w, h;
+	int	w, h, w2, h2;
 	
 	rect.x = rect.y = 0;
 	rect.w = display->w;
@@ -363,15 +363,69 @@ void	Render( Green_RTD *rtd )
 	}
 	
 	doc = rtd->docs[rtd->doc_cur];
-	tscale = Green_Fit( doc, display->w, display->h ) * doc->finescale;
-	page = poppler_document_get_page( doc->doc, doc->page_cur );
-	Green_GetDimension( page, &w, &h, tscale, doc->rotation % 2 );
-	rect.w = w > display->w ? display->w : w;
-	rect.h = h > display->h ? display->h : h;
-	rect.x = (display->w - rect.w) / 2;
-	rect.y = (display->h - rect.h) / 2;
-	RenderPage( rtd, rect, doc->xoffset, doc->yoffset, page, tscale );
-	g_object_unref( G_OBJECT( page ) );
+	
+	if (rtd->side_by_side && doc->page_count > 1)
+	{
+		int left_page, right_page;
+		PopplerPage *left_page_obj = NULL, *right_page_obj = NULL;
+		
+		// Simple approach: show current page and next page
+		left_page = doc->page_cur;
+		right_page = doc->page_cur + 1;
+		
+		
+		if (left_page >= 0 && right_page < doc->page_count)
+		{
+			tscale = Green_Fit( doc, display->w / 2, display->h ) * doc->finescale;
+			
+			left_page_obj = poppler_document_get_page( doc->doc, left_page );
+			right_page_obj = poppler_document_get_page( doc->doc, right_page );
+			
+			
+			Green_GetDimension( left_page_obj, &w, &h, tscale, doc->rotation % 2 );
+			Green_GetDimension( right_page_obj, &w2, &h2, tscale, doc->rotation % 2 );
+			
+			rect.w = w > display->w / 2 ? display->w / 2 : w;
+			rect.h = h > display->h ? display->h : h;
+			rect.x = (display->w / 2 - rect.w) / 2;
+			rect.y = (display->h - rect.h) / 2;
+			RenderPage( rtd, rect, 0, 0, left_page_obj, tscale, left_page );
+			
+			rect.w = w2 > display->w / 2 ? display->w / 2 : w2;
+			rect.h = h2 > display->h ? display->h : h2;
+			rect.x = display->w / 2 + (display->w / 2 - rect.w) / 2;
+			rect.y = (display->h - rect.h) / 2;
+			RenderPage( rtd, rect, 0, 0, right_page_obj, tscale, right_page );
+			
+			g_object_unref( G_OBJECT( left_page_obj ) );
+			g_object_unref( G_OBJECT( right_page_obj ) );
+		}
+		else
+		{
+			tscale = Green_Fit( doc, display->w, display->h ) * doc->finescale;
+			page = poppler_document_get_page( doc->doc, doc->page_cur );
+			Green_GetDimension( page, &w, &h, tscale, doc->rotation % 2 );
+			rect.w = w > display->w ? display->w : w;
+			rect.h = h > display->h ? display->h : h;
+			rect.x = (display->w - rect.w) / 2;
+			rect.y = (display->h - rect.h) / 2;
+			RenderPage( rtd, rect, doc->xoffset, doc->yoffset, page, tscale, doc->page_cur );
+			g_object_unref( G_OBJECT( page ) );
+		}
+	}
+	else
+	{
+		tscale = Green_Fit( doc, display->w, display->h ) * doc->finescale;
+		page = poppler_document_get_page( doc->doc, doc->page_cur );
+		Green_GetDimension( page, &w, &h, tscale, doc->rotation % 2 );
+		rect.w = w > display->w ? display->w : w;
+		rect.h = h > display->h ? display->h : h;
+		rect.x = (display->w - rect.w) / 2;
+		rect.y = (display->h - rect.h) / 2;
+		RenderPage( rtd, rect, doc->xoffset, doc->yoffset, page, tscale, doc->page_cur );
+		g_object_unref( G_OBJECT( page ) );
+	}
+	
 	SDL_UpdateRect( display, 0, 0, 0, 0 );
 	return;
 }
@@ -468,14 +522,30 @@ RState	NormalInput( Green_RTD *rtd, SDL_Event *event, unsigned short *flags )
 			*flags |= FLAG_RENDER;
 			break;
 		case SDLK_PAGEUP:
-			if (!doc || !Green_GotoPage( doc, doc->page_cur - 1, true ))
+			if (!doc)
 				break;
+			
+			if (rtd->side_by_side) {
+				if (!Green_GotoPage( doc, doc->page_cur - 2, true ))
+					break;
+			} else {
+				if (!Green_GotoPage( doc, doc->page_cur - 1, true ))
+					break;
+			}
 			
 			*flags |= FLAG_RENDER;
 			break;
 		case SDLK_PAGEDOWN:
-			if (!doc || !Green_GotoPage( doc, doc->page_cur + 1, true ))
+			if (!doc)
 				break;
+			
+			if (rtd->side_by_side) {
+				if (!Green_GotoPage( doc, doc->page_cur + 2, true ))
+					break;
+			} else {
+				if (!Green_GotoPage( doc, doc->page_cur + 1, true ))
+					break;
+			}
 			
 			*flags |= FLAG_RENDER;
 			break;
@@ -491,14 +561,15 @@ RState	NormalInput( Green_RTD *rtd, SDL_Event *event, unsigned short *flags )
 			
 			state = ROTATE;
 			break;
-		case '+':
+		case SDLK_PLUS:
+		case SDLK_EQUALS:
 			if (!doc)
 				break;
 			
 			Green_Zoom( doc, display->w,display->h, doc->finescale * rtd->zoomstep );
 			*flags |= FLAG_RENDER;
 			break;
-		case '-':
+		case SDLK_MINUS:
 			if (!doc)
 				break;
 			
@@ -536,6 +607,10 @@ RState	NormalInput( Green_RTD *rtd, SDL_Event *event, unsigned short *flags )
 			break;
 		case SDLK_TAB:
 			Green_NextVaildDoc( rtd );
+			*flags |= FLAG_RENDER;
+			break;
+		case SDLK_d:
+			rtd->side_by_side = !rtd->side_by_side;
 			*flags |= FLAG_RENDER;
 			break;
 		default:

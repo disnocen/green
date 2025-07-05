@@ -74,6 +74,7 @@ typedef struct
 	Green_FitMethod	fit_method;
 	double	step, zoomstep;
 	unsigned char	bb;
+	unsigned char	side_by_side;
 	
 	struct
 	{
