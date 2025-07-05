@@ -369,9 +369,16 @@ void	Render( Green_RTD *rtd )
 		int left_page, right_page;
 		PopplerPage *left_page_obj = NULL, *right_page_obj = NULL;
 		
-		// Simple approach: show current page and next page
-		left_page = doc->page_cur;
-		right_page = doc->page_cur + 1;
+		// Book-style pairs: 1-2, 3-4, 5-6, etc.
+		// If current page is odd (1, 3, 5...), show current and next
+		// If current page is even (2, 4, 6...), show previous and current
+		if (doc->page_cur % 2 == 0) { // 0-indexed, so page 0 is page 1, page 1 is page 2
+			left_page = doc->page_cur;
+			right_page = doc->page_cur + 1;
+		} else {
+			left_page = doc->page_cur - 1;
+			right_page = doc->page_cur;
+		}
 		
 		
 		if (left_page >= 0 && right_page < doc->page_count)
