@@ -45,7 +45,7 @@ In addition to the baz segments, also parse the blurfl headers.
 Recursive mode. Operates as fast as lightning at the expense of a megabyte
 of virtual memory.
 .SS "PROGRAM OPERATION"
-\fB<TAB>\fR - Go to the next open document.
+\fB<TAB>\fR - Show/hide the table of contents.
 \fB<F<n>>\fR - Go to the n-th document.
 \fBESC\fR - Escape current input mode.  
 \fBq\fR - Quit
@@ -58,6 +58,15 @@ of virtual memory.
 \fB<pg dn>\fR - Go to next page.
 \fB<g<n>RETURN>\fR - Go to page n.
 \fB<+,->\fR - Zoom in, Zoom out.
+\fB<i>\fR - Toggle night mode (inverted colors).
+\fB<d>\fR - Toggle side-by-side (double page) mode.
+.SS "TABLE OF CONTENTS"
+\fB<TAB>\fR - Enter the table of contents.
+\fB<j, k>\fR - Move the selection up and down.
+\fB<RETURN>\fR - Go to the selected section.
+\fB<l>\fR - Expand a section to show subsections, or enter a leaf section.
+\fB<h>\fR - Collapse a section, hiding its subsections.
+\fB<ESC>\fR - Leave the table of contents.
 .SS FILES
 \fI$(HOME)/.green.conf\fR 
 Per user configuration file.

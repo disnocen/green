@@ -442,3 +442,26 @@ int	Green_FindNext( Green_Document *doc, int start )
 	
 	return res;
 }
+
+int	Green_FindPrevious( Green_Document *doc, int start )
+{
+	PopplerPage	*page;
+	GList	*list;
+	int	i, res = -1;
+	
+	for (i = 0; i < doc->page_count; i++)
+	{
+		int page_idx = (start - i - 1 + doc->page_count) % doc->page_count;
+		page = poppler_document_get_page( doc->doc, page_idx );
+		list = poppler_page_find_text( page, doc->search_str );
+		g_object_unref( G_OBJECT( page ) );
+		if (list)
+		{
+			g_list_free( list );
+			res = page_idx;
+			break;
+		}
+	}
+	
+	return res;
+}

@@ -75,6 +75,7 @@ typedef struct
 	double	step, zoomstep;
 	unsigned char	bb;
 	unsigned char	side_by_side;
+	bool		night;
 	
 	struct
 	{
@@ -99,6 +100,7 @@ void	Green_ScrollRelative( Green_Document *doc, int x, int y, int w, int h, int 
 void	Green_GetScrollRegion( Green_Document *doc, int w, int h, int *scroll_w, int *scroll_h );
 void	Green_Zoom( Green_Document *doc, int width, int height, double new_fs );
 int	Green_FindNext( Green_Document *doc, int start );
+int	Green_FindPrevious( Green_Document *doc, int start );
 
 
 inline static

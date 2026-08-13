@@ -24,10 +24,13 @@ MATE.
  - uses SDL to support various frontends (including framebuffer)
  - multiple documents
  - single page mode
+ - side-by-side (double page) mode
  - fit width, height or page
  - zooming
  - goto page
  - search function
+ - table of contents navigation
+ - night mode
  - scheme support
 
 
@@ -51,7 +54,7 @@ OPTIONS
 
 PROGRAM OPERATION
 ------------------
-`<TAB>` - Go to the next open document.  
+`<TAB>` - Show/hide the table of contents.  
 `<F<n>>` - Go to the n-th document.  
 `ESC` - Escape current input mode.    
 `q` - Quit
@@ -67,7 +70,17 @@ NAVIGATION INSIDE A DOCUMENT
 `<pg dn>` - Go to next page.  
 `<g<n>RETURN>` - Go to page n.  
 `<+,->` - Zoom in, Zoom out.  
+`i` - Toggle night mode (inverted colors).  
+`d` - Toggle side-by-side (double page) mode.  
 `c` - close document.
+
+### TABLE OF CONTENTS
+`<TAB>` - Enter the table of contents (for PDFs that have one).  
+`<j, k>` - Move the selection up and down.  
+`<RETURN>` - Go to the selected section and close the table of contents.  
+`<l>` - Expand a section to show its subsections; on a leaf section, jump to it.  
+`<h>` - Collapse a section, hiding its subsections.  
+`<ESC>` - Leave the table of contents without jumping.
 
 ### FITTING
 `fn` - disable page fitting mode.
@@ -116,4 +129,23 @@ AUTHOR
 The Green source code may be downloaded from <http://github.com/schandinat/green/>.   
 Green is Licensed under GNU GPL version 3.  
 This man page was written for the Debian GNU / Linux System by Oz Nahum <nahumoz@gmail.com>.
+
+CHANGES IN THIS FORK
+--------------------
+This fork adds the following on top of the original `green`:
+
+ - **Side-by-side (double page) mode** (`d`): shows two pages at once with
+   book-style pairing (1-2, 3-4, ...). PageUp/PageDown and j/k step through
+   page pairs.
+ - **Table of contents** (`TAB`): for PDFs that have an outline, opens a
+   navigable table of contents panel. Use `j`/`k` to move, `Enter` to jump to
+   a section, `l` to expand and `h` to collapse subsections, `Esc` to close.
+ - **Night mode** (`i`): inverts the page colors for reading in the dark.
+ - **Fixed scrolling while zoomed in double-page mode**: the scroll region is
+   now computed against the actual (half-width) page viewport and the page
+   offset is applied when rendering both pages, so zooming in no longer
+   requires several key presses (or scrolling into blank space) to reach the
+   next page pair.
+ - **Search backwards** (`,`): in addition to `n` for the next result, `,`
+   jumps to the previous search result.
 
