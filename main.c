@@ -1255,14 +1255,35 @@ int	main( int argc, char *argv[] )
 			return err;
 	}
 	
-	/* load theme files (optional): -themesdir, ~/.green/themes, system dir */
+	/* load theme files (optional): -themesdir, $XDG_DATA_HOME/green/themes,
+	   $HOME/.local/share/green/themes, $HOME/.green/themes */
 	{
-		char	*theme_dirs[3], *dir;
+		char	*theme_dirs[4], *dir, *xdg;
+		int	n = 0, j;
 		
-		theme_dirs[0] = themes_dir;
-		theme_dirs[1] = NULL;
-		theme_dirs[2] = NULL;
+		theme_dirs[n++] = themes_dir;
+		xdg = getenv( "XDG_DATA_HOME" );
 		dir = getenv( "HOME" );
+		if (xdg && *xdg)
+		{
+			char	*tmp = malloc( strlen( xdg ) + strlen( "/green/themes" ) + 1 );
+			
+			if (tmp)
+			{
+				sprintf( tmp, "%s/%s", xdg, "green/themes" );
+				theme_dirs[n++] = tmp;
+			}
+		}
+		else if (dir)
+		{
+			char	*tmp = malloc( strlen( dir ) + strlen( "/.local/share/green/themes" ) + 1 );
+			
+			if (tmp)
+			{
+				sprintf( tmp, "%s/%s", dir, ".local/share/green/themes" );
+				theme_dirs[n++] = tmp;
+			}
+		}
 		if (dir)
 		{
 			char	*tmp = malloc( strlen( dir ) + strlen( "/.green/themes" ) + 1 );
@@ -1270,23 +1291,21 @@ int	main( int argc, char *argv[] )
 			if (tmp)
 			{
 				sprintf( tmp, "%s/%s", dir, ".green/themes" );
-				theme_dirs[1] = tmp;
+				theme_dirs[n++] = tmp;
 			}
 		}
-#ifdef	GREEN_THEME_DIR
-		theme_dirs[2] = GREEN_THEME_DIR;
-#endif
 		
-		for (i = 0; i < 3; i++)
+		for (j = 0; j < n; j++)
 		{
-			if (!theme_dirs[i])
+			if (!theme_dirs[j])
 				continue;
 			
-			if (LoadThemeDir( theme_dirs[i], &theme_schemes ))
+			if (LoadThemeDir( theme_dirs[j], &theme_schemes ))
 				break;
 		}
 		
-		free( theme_dirs[1] );
+		for (j = 1; j < n; j++)
+			free( theme_dirs[j] );
 	}
 	
 	if (BuildThemeList( &rtd, &theme_schemes ))
