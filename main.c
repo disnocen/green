@@ -1104,7 +1104,10 @@ int	main( int argc, char *argv[] )
 	Green_RTD	rtd;
 	Green_RGBA	black = {0, 0, 0, 0xFF},
 		white = {0xFF, 0xFF, 0xFF, 0xFF},
-		dark_bg = {0x10, 0x10, 0x10, 0xFF};
+		dark_bg = {0x10, 0x10, 0x10, 0xFF},
+		nord_bg = {0x2E, 0x34, 0x40, 0xFF},
+		nord_text = {0xEC, 0xEF, 0xF4, 0xFF},
+		nord_hl = {0x88, 0xC0, 0xD0, 160};
 	struct SchemeArray	schemes, theme_schemes;
 	char	*opt, *config_file = NULL, *default_scheme = NULL, *current_scheme = NULL;
 	char	*themes_dir = NULL, *current_theme = NULL;
@@ -1142,7 +1145,8 @@ int	main( int argc, char *argv[] )
 	AddTheme( &rtd, "default-light", false, rtd.c_background, black, rtd.c_highlight );
 	rtd.theme_light_cur = FindTheme( &rtd, "default-light" );
 	AddTheme( &rtd, "dark", true, dark_bg, white, rtd.c_highlight );
-	rtd.theme_dark_cur = FindTheme( &rtd, "dark" );
+	AddTheme( &rtd, "dark-nord", true, nord_bg, nord_text, nord_hl );
+	rtd.theme_dark_cur = FindTheme( &rtd, "dark-nord" );
 	g_type_init();
 	
 	for (i = 1; i < argc; i++)
