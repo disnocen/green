@@ -1,0 +1,9 @@
+# green's classic dark (inverted) theme
+SCHEME dark
+{
+    Mode = dark
+    Background.Color = 0x101010
+    Text.Color = 0xFFFFFF
+    Highlight.Color = 0x80FF80
+    Highlight.Alpha = 128
+}

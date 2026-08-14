@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <dirent.h>
 #include "green.h"
 
 
@@ -77,6 +78,8 @@ const char	*help_text =
 "The following options are available:\n"
 "    -config=<filename>          to read a configuration from a non-standard path\n"
 "    -scheme=<identifier>        to use a different scheme than the default\n"
+"    -theme=<identifier>         to use a specific theme (e.g. dark-nord)\n"
+"    -themesdir=<directory>      to load color themes (*.theme) from a directory\n"
 "    -fullscreen                 to startup in fullscreen mode\n"
 "    -no-fullscreen              to startup in window mode\n"
 "    -width=<width>              to specify the window width (in pixels)\n"
@@ -882,11 +885,229 @@ int	ParseConfig( char *filename, struct SchemeArray *schemes, char **default_sch
 	return res;
 }
 
+static int	AddTheme( Green_RTD *rtd, const char *name, bool dark, Green_RGBA bg, Green_RGBA text, Green_RGBA hl )
+{
+	Green_Theme	*tmp;
+	int	idx = -1, i;
+	
+	for (i = 0; i < rtd->themes_count; i++)
+	{
+		if (!strcmp( name, rtd->themes[i].name ))
+		{
+			idx = i;
+			break;
+		}
+	}
+	
+	if (idx < 0)
+	{
+		tmp = realloc( rtd->themes, (rtd->themes_count + 1) * sizeof( Green_Theme ) );
+		if (!tmp)
+			return -1;
+		
+		rtd->themes = tmp;
+		idx = rtd->themes_count++;
+		memset( &rtd->themes[idx], 0, sizeof( Green_Theme ) );
+		strncpy( rtd->themes[idx].name, name, sizeof( rtd->themes[idx].name ) - 1 );
+		rtd->themes[idx].name[sizeof( rtd->themes[idx].name ) - 1] = 0;
+	}
+	
+	rtd->themes[idx].dark = dark;
+	rtd->themes[idx].background = bg;
+	rtd->themes[idx].text = text;
+	rtd->themes[idx].highlight = hl;
+	return idx;
+}
+
+static int	FindTheme( Green_RTD *rtd, const char *name )
+{
+	int	i;
+	
+	for (i = 0; i < rtd->themes_count; i++)
+		if (!strcmp( name, rtd->themes[i].name ))
+			return i;
+	
+	return -1;
+}
+
+static int	ThemeFromScheme( Green_Theme *t, struct SchemeData *data, struct SchemeArray *schemes, int depth )
+{
+	Green_RGBA	white = {0xFF, 0xFF, 0xFF, 0xFF},
+		hl = {0x80, 0xFF, 0x80, 0x80},
+		bg = {0x10, 0x10, 0x10, 0xFF};
+	char	*str, *tmp, *id, *arg;
+	long	tmpl;
+	int	i, res = 0;
+	
+	t->dark = true;
+	t->background = bg;
+	t->text = white;
+	t->highlight = hl;
+	
+	if (!data || !data->data || !data->data_size || depth > 16)
+		return -1;
+	
+	str = data->data + data->data_size - 1;
+	do
+	{
+		while (str > data->data && *(str - 1))
+			str--;
+		
+		if (str[0] == '!')
+		{
+			tmp = str + 1;
+			id = ScanIdentifier( &tmp );
+			if (!id || *tmp)
+			{
+				fprintf( stderr, "Invalid execute identifier in THEME '%s'\n", data->name );
+				free( id );
+				res = -1;
+				break;
+			}
+			
+			for (i = 0; i < (int)schemes->n; i++)
+			{
+				if (!strcmp( id, schemes->scheme[i]->name ))
+				{
+					res = ThemeFromScheme( t, schemes->scheme[i], schemes, depth + 1 );
+					break;
+				}
+			}
+			
+			if (i == (int)schemes->n)
+			{
+				fprintf( stderr, "Unknown THEME include '%s'\n", id );
+				res = -1;
+			}
+			free( id );
+			continue;
+		}
+		else if ((tmp = strchr( str, '=' )))
+		{
+			arg = tmp + 1;
+			while (tmp > str && *(tmp - 1) == ' ')
+				tmp--;
+			
+			if (tmp == str)
+			{
+				fprintf( stderr, "Invalid empty property in THEME '%s'\n", data->name );
+				res = -1;
+				break;
+			}
+			
+			id = malloc( tmp - str + 1 );
+			if (!id)
+			{
+				fprintf( stderr, "Out of memory!\n" );
+				res = -1;
+				break;
+			}
+			memcpy( id, str, tmp - str );
+			id[tmp - str] = 0;
+			while (*arg == ' ')
+				arg++;
+			arg = strdup( arg );
+			if (!arg)
+			{
+				fprintf( stderr, "Out of memory!\n" );
+				free( id );
+				res = -1;
+				break;
+			}
+			
+			if (!strcasecmp( id, "mode" ))
+				t->dark = !strcasecmp( arg, "dark" ) || !strcasecmp( arg, "night" );
+			else if (!strcasecmp( id, "background.color" ))
+				res = GetColor( &t->background, arg );
+			else if (!strcasecmp( id, "text.color" ))
+				res = GetColor( &t->text, arg );
+			else if (!strcasecmp( id, "highlight.color" ))
+				res = GetColor( &t->highlight, arg );
+			else if (!strcasecmp( id, "highlight.alpha" ))
+			{
+				tmpl = strtol( arg, &tmp, 10 );
+				if (!*tmp && tmpl >= 0 && tmpl <= 0xFF)
+					t->highlight.a = tmpl;
+				else if (tmp[0] == '%' && !tmp[1] && tmpl >= 0 && tmpl <= 100)
+					t->highlight.a = tmpl * 0xFF / 100;
+				else
+					res = -1;
+			}
+			else
+				fprintf( stderr, "Ignoring unknown property '%s' in THEME '%s'\n", id, data->name );
+			
+			free( arg );
+			free( id );
+		}
+		else
+			fprintf( stderr, "Ignoring unknown construct '%s' in THEME '%s'\n", str, data->name );
+		
+	}	while ((str -= 2) > data->data && !res);
+	
+	return res;
+}
+
+static int	BuildThemeList( Green_RTD *rtd, struct SchemeArray *schemes )
+{
+	Green_Theme	t;
+	int	i, res = 0;
+	
+	for (i = 0; i < (int)schemes->n; i++)
+	{
+		if (ThemeFromScheme( &t, schemes->scheme[i], schemes, 0 ))
+			continue;
+		
+		if (AddTheme( rtd, schemes->scheme[i]->name, t.dark, t.background, t.text, t.highlight ) < 0)
+		{
+			fprintf( stderr, "Out of memory!\n" );
+			res = -1;
+			break;
+		}
+	}
+	
+	return res;
+}
+
+static int	LoadThemeDir( char *dir, struct SchemeArray *schemes )
+{
+	DIR	*d;
+	struct dirent	*de;
+	char	path[1024], *file_default;
+	int	len;
+	
+	if (!dir || !*dir)
+		return 0;
+	
+	d = opendir( dir );
+	if (!d)
+		return 0;
+	
+	while ((de = readdir( d )))
+	{
+		len = strlen( de->d_name );
+		if (len <= 6 || strcmp( de->d_name + len - 6, ".theme" ))
+			continue;
+		
+		snprintf( path, sizeof( path ), "%s/%s", dir, de->d_name );
+		file_default = NULL;
+		if (ParseConfig( path, schemes, &file_default ))
+			fprintf( stderr, "Failed to load theme file '%s'\n", path );
+		free( file_default );
+	}
+	
+	closedir( d );
+	return 1;
+}
+
 int	main( int argc, char *argv[] )
 {
 	Green_RTD	rtd;
-	struct SchemeArray	schemes;
+	Green_RGBA	black = {0, 0, 0, 0xFF},
+		white = {0xFF, 0xFF, 0xFF, 0xFF},
+		dark_bg = {0x10, 0x10, 0x10, 0xFF};
+	struct SchemeArray	schemes, theme_schemes;
 	char	*opt, *config_file = NULL, *default_scheme = NULL, *current_scheme = NULL;
+	char	*themes_dir = NULL, *current_theme = NULL;
 	int i, err = 0;
 	
 	rtd.flags = 0;
@@ -895,10 +1116,7 @@ int	main( int argc, char *argv[] )
 	rtd.docs = NULL;
 	rtd.doc_count = 0;
 	rtd.doc_cur = 0;
-	rtd.c_background.r = 0x30;
-	rtd.c_background.g = 0xD0;
-	rtd.c_background.b = 0x30;
-	rtd.c_background.a = 0xFF;
+	rtd.c_background = white;
 	rtd.c_highlight.r = 0x80;
 	rtd.c_highlight.g = 0xFF;
 	rtd.c_highlight.b = 0x80;
@@ -915,6 +1133,16 @@ int	main( int argc, char *argv[] )
 	rtd.mouse.border_speed = 1;
 	schemes.scheme = NULL;
 	schemes.n = 0;
+	theme_schemes.scheme = NULL;
+	theme_schemes.n = 0;
+	rtd.themes = NULL;
+	rtd.themes_count = 0;
+	rtd.theme_dark_cur = -1;
+	rtd.theme_light_cur = -1;
+	AddTheme( &rtd, "default-light", false, rtd.c_background, black, rtd.c_highlight );
+	rtd.theme_light_cur = FindTheme( &rtd, "default-light" );
+	AddTheme( &rtd, "dark", true, dark_bg, white, rtd.c_highlight );
+	rtd.theme_dark_cur = FindTheme( &rtd, "dark" );
 	g_type_init();
 	
 	for (i = 1; i < argc; i++)
@@ -946,6 +1174,30 @@ int	main( int argc, char *argv[] )
 			}
 			
 			current_scheme = opt;
+		}
+		else if (!strncmp( opt, "theme=", 6 ))
+		{
+			opt += 6;
+			
+			if (current_theme)
+			{
+				fprintf( stderr, "Multiple theme statements are forbidden!\n" );
+				return -1;
+			}
+			
+			current_theme = opt;
+		}
+		else if (!strncmp( opt, "themesdir=", 10 ))
+		{
+			opt += 10;
+			
+			if (themes_dir)
+			{
+				fprintf( stderr, "Multiple themesdir statements are forbidden!\n" );
+				return -1;
+			}
+			
+			themes_dir = opt;
 		}
 	}
 	
@@ -1003,6 +1255,80 @@ int	main( int argc, char *argv[] )
 			return err;
 	}
 	
+	/* load theme files (optional): -themesdir, ~/.green/themes, system dir */
+	{
+		char	*theme_dirs[3], *dir;
+		
+		theme_dirs[0] = themes_dir;
+		theme_dirs[1] = NULL;
+		theme_dirs[2] = NULL;
+		dir = getenv( "HOME" );
+		if (dir)
+		{
+			char	*tmp = malloc( strlen( dir ) + strlen( "/.green/themes" ) + 1 );
+			
+			if (tmp)
+			{
+				sprintf( tmp, "%s/%s", dir, ".green/themes" );
+				theme_dirs[1] = tmp;
+			}
+		}
+#ifdef	GREEN_THEME_DIR
+		theme_dirs[2] = GREEN_THEME_DIR;
+#endif
+		
+		for (i = 0; i < 3; i++)
+		{
+			if (!theme_dirs[i])
+				continue;
+			
+			if (LoadThemeDir( theme_dirs[i], &theme_schemes ))
+				break;
+		}
+		
+		free( theme_dirs[1] );
+	}
+	
+	if (BuildThemeList( &rtd, &theme_schemes ))
+		return -1;
+	
+	/* apply the hard-coded default themes to classic colors */
+	{
+		int	idx = FindTheme( &rtd, "default-light" );
+		
+		if (idx >= 0)
+		{
+			rtd.themes[idx].background = rtd.c_background;
+			rtd.themes[idx].highlight = rtd.c_highlight;
+		}
+	}
+	
+	if (current_theme)
+	{
+		int	idx = FindTheme( &rtd, current_theme );
+		
+		if (idx < 0)
+		{
+			fprintf( stderr, "Unknown THEME '%s'\n", current_theme );
+			return -1;
+		}
+		
+		if (rtd.themes[idx].dark)
+			rtd.theme_dark_cur = idx;
+		else
+		{
+			rtd.c_background = rtd.themes[idx].background;
+			rtd.c_highlight = rtd.themes[idx].highlight;
+			rtd.theme_light_cur = idx;
+		}
+	}
+	
+	if (rtd.theme_dark_cur < 0 || rtd.theme_light_cur < 0)
+	{
+		fprintf( stderr, "No usable themes found!\n" );
+		return -1;
+	}
+	
 	for (i = 1; i < argc; i++)
 	{
 		if (argv[i][0] != '-')
@@ -1019,7 +1345,8 @@ int	main( int argc, char *argv[] )
 			PrintVersion();
 			return 0;
 		}
-		else if (!strncmp( opt, "config=", 7 ) || !strncmp( opt, "scheme=", 7 ))
+		else if (!strncmp( opt, "config=", 7 ) || !strncmp( opt, "scheme=", 7 )
+			|| !strncmp( opt, "theme=", 6 ) || !strncmp( opt, "themesdir=", 10 ))
 		{
 		}
 		else if (!strncmp( opt, "fit=", 4 ))

@@ -47,6 +47,20 @@ typedef struct
 
 typedef struct
 {
+	char	name[64];
+	bool	dark;
+		// is this a dark theme?
+	Green_RGBA	background;
+		// window/page background color
+	Green_RGBA	text;
+		// text color
+	Green_RGBA	highlight;
+		// search highlight color, a = alpha (0..255)
+	
+}	Green_Theme;
+
+typedef struct
+{
 	PopplerDocument	*doc;
 	char	*uri;
 	int	page_count, page_cur,
@@ -76,6 +90,10 @@ typedef struct
 	unsigned char	bb;
 	unsigned char	side_by_side;
 	bool		night;
+	Green_Theme	*themes;		// all known themes (built-in + files)
+	int		themes_count;		// number of entries in themes
+	int		theme_dark_cur;		// index of the active dark theme
+	int		theme_light_cur;	// index of the active light theme
 	
 	struct
 	{
@@ -107,6 +125,20 @@ inline static
 int	Green_IsDocValid( Green_RTD *rtd, int id )
 {
 	return id >= 0 && id < rtd->doc_count && rtd->docs[id];
+}
+
+inline static
+const Green_Theme	*Green_GetTheme( Green_RTD *rtd )
+{
+	if (rtd->themes && rtd->themes_count > 0)
+	{
+		int	idx = rtd->night ? rtd->theme_dark_cur : rtd->theme_light_cur;
+		
+		if (idx >= 0 && idx < rtd->themes_count)
+			return &rtd->themes[idx];
+	}
+	
+	return NULL;
 }
 
 inline static

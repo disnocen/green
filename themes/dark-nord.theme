@@ -1,0 +1,9 @@
+# Nord dark theme (https://www.nordtheme.com/)
+SCHEME dark-nord
+{
+    Mode = dark
+    Background.Color = 0x2E3440
+    Text.Color = 0xECEFF4
+    Highlight.Color = 0x88C0D0
+    Highlight.Alpha = 160
+}

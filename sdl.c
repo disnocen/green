@@ -169,41 +169,40 @@ static const unsigned char bitmap_font[][7] = {
 };
 
 
-static Uint32	MapDisplayPixel( Uint32 src, SDL_PixelFormat *fmt, bool night )
+static Uint32	MapDisplayPixel( Uint32 src, SDL_PixelFormat *fmt, const Green_Theme *theme, bool dark )
 {
-	Uint32	r = (src >> 16) & 0xFF,
+	long	r = (src >> 16) & 0xFF,
 		g = (src >> 8) & 0xFF,
 		b = src & 0xFF;
 	
-	if (night)
+	if (dark && theme)
 	{
-		r = 0xFF - r;
-		g = 0xFF - g;
-		b = 0xFF - b;
+		long	lum = (r * 299 + g * 587 + b * 114) / 1000,
+			inv = 255 - lum,
+			tr = theme->text.r, tg = theme->text.g, tb = theme->text.b,
+			br = theme->background.r, bg2 = theme->background.g, bb = theme->background.b;
+		
+		r = (tr * inv + br * lum) / 255 + (r - lum);
+		g = (tg * inv + bg2 * lum) / 255 + (g - lum);
+		b = (tb * inv + bb * lum) / 255 + (b - lum);
+		if (r < 0) r = 0; else if (r > 255) r = 255;
+		if (g < 0) g = 0; else if (g > 255) g = 255;
+		if (b < 0) b = 0; else if (b > 255) b = 255;
 	}
 	
-	return (((r >> fmt->Rloss) << fmt->Rshift)
-		| ((g >> fmt->Gloss) << fmt->Gshift)
-		| ((b >> fmt->Bloss) << fmt->Bshift));
+	return ((((Uint32)r >> fmt->Rloss) << fmt->Rshift)
+		| (((Uint32)g >> fmt->Gloss) << fmt->Gshift)
+		| (((Uint32)b >> fmt->Bloss) << fmt->Bshift));
 }
 
 static Uint32	MapBlendPixel( Uint32 src, SDL_PixelFormat *fmt,
-	Uint32 ia, Uint32 ar, Uint32 ag, Uint32 ab, bool night )
+	Uint32 ia, Uint32 ar, Uint32 ag, Uint32 ab, const Green_Theme *theme, bool dark )
 {
 	Uint32	r = (((src >> 16) & 0xFF) * ia + ar) / 256,
 		g = (((src >> 8) & 0xFF) * ia + ag) / 256,
 		b = ((src & 0xFF) * ia + ab) / 256;
 	
-	if (night)
-	{
-		r = 0xFF - (r & 0xFF);
-		g = 0xFF - (g & 0xFF);
-		b = 0xFF - (b & 0xFF);
-	}
-	
-	return (((r >> fmt->Rloss) << fmt->Rshift)
-		| ((g >> fmt->Gloss) << fmt->Gshift)
-		| ((b >> fmt->Bloss) << fmt->Bshift));
+	return MapDisplayPixel( (r << 16) | (g << 8) | b, fmt, theme, dark );
 }
 
 void	GetInput( IBuffer *input, SDL_Event *event )
@@ -283,6 +282,7 @@ void	RenderPage( Green_RTD *rtd, SDL_Rect dest, int xoff, int yoff, PopplerPage 
 {
 	PopplerRectangle	*rect;
 	Green_Document	*doc = rtd->docs[rtd->doc_cur];
+	const Green_Theme	*theme = Green_GetTheme( rtd );
 	SDL_Surface	*display = SDL_GetVideoSurface();
 	SDL_PixelFormat	fmt = *display->format;
 	cairo_surface_t	*surface;
@@ -355,7 +355,7 @@ void	RenderPage( Green_RTD *rtd, SDL_Rect dest, int xoff, int yoff, PopplerPage 
 				+ dest.x * fmt.BytesPerPixel;
 			for (x = 0; x < dest.w; x++)
 			{
-				*dst = MapDisplayPixel( *src, &fmt, rtd->night );
+				*dst = MapDisplayPixel( *src, &fmt, theme, rtd->night );
 				
 				src = (void*)src + dir_x * rowstride;
 				dst = (void*)dst + fmt.BytesPerPixel;
@@ -371,7 +371,7 @@ void	RenderPage( Green_RTD *rtd, SDL_Rect dest, int xoff, int yoff, PopplerPage 
 				+ dest.x * fmt.BytesPerPixel;
 			for (x = 0; x < dest.w; x++)
 			{
-				*dst = MapDisplayPixel( *src, &fmt, rtd->night );
+				*dst = MapDisplayPixel( *src, &fmt, theme, rtd->night );
 				
 				src += dir_x;
 				dst = (void*)dst + fmt.BytesPerPixel;
@@ -382,10 +382,20 @@ void	RenderPage( Green_RTD *rtd, SDL_Rect dest, int xoff, int yoff, PopplerPage 
 	if (list)
 	{
 		poppler_page_get_size( page, &pwidth, &pheight );
-		ar = rtd->c_highlight.a * rtd->c_highlight.r;
-		ag = rtd->c_highlight.a * rtd->c_highlight.g;
-		ab = rtd->c_highlight.a * rtd->c_highlight.b;
-		ia = 0xFF - rtd->c_highlight.a;
+		if (theme && rtd->night)
+		{
+			ia = 0xFF - theme->highlight.a;
+			ar = theme->highlight.a * theme->highlight.r;
+			ag = theme->highlight.a * theme->highlight.g;
+			ab = theme->highlight.a * theme->highlight.b;
+		}
+		else
+		{
+			ia = 0xFF - rtd->c_highlight.a;
+			ar = rtd->c_highlight.a * rtd->c_highlight.r;
+			ag = rtd->c_highlight.a * rtd->c_highlight.g;
+			ab = rtd->c_highlight.a * rtd->c_highlight.b;
+		}
 		n = g_list_length( list );
 		for (i = 0; i < n; i++)
 		{
@@ -469,7 +479,7 @@ void	RenderPage( Green_RTD *rtd, SDL_Rect dest, int xoff, int yoff, PopplerPage 
 						+ (dest.x + (int)rect->x1) * fmt.BytesPerPixel;
 					for (x = rect->x1; x < (int)rect->x2; x++)
 					{
-						*dst = MapBlendPixel( *src, &fmt, ia, ar, ag, ab, rtd->night );
+						*dst = MapBlendPixel( *src, &fmt, ia, ar, ag, ab, theme, rtd->night );
 						
 						src = (void*)src + dir_x * rowstride;
 						dst = (void*)dst + fmt.BytesPerPixel;
@@ -485,7 +495,7 @@ void	RenderPage( Green_RTD *rtd, SDL_Rect dest, int xoff, int yoff, PopplerPage 
 						+ (dest.x + (int)rect->x1) * fmt.BytesPerPixel;
 					for (x = rect->x1; x < (int)rect->x2; x++)
 					{
-						*dst = MapBlendPixel( *src, &fmt, ia, ar, ag, ab, rtd->night );
+						*dst = MapBlendPixel( *src, &fmt, ia, ar, ag, ab, theme, rtd->night );
 						
 						src += dir_x;
 						dst = (void*)dst + fmt.BytesPerPixel;
@@ -827,6 +837,13 @@ static void	RenderTOC( SDL_Surface *display, Green_RTD *rtd )
 	panel.h = display->h;
 	SDL_FillRect( display, &panel, SDL_MapRGB( display->format, 0x14, 0x14, 0x14 ) );
 	
+	{
+		const Green_Theme	*theme = Green_GetTheme( rtd );
+		
+		if (theme && theme->dark)
+			SDL_FillRect( display, &panel, SDL_MapRGB( display->format, theme->background.r, theme->background.g, theme->background.b ) );
+	}
+	
 	title_col = SDL_MapRGB( display->format, 0xE8, 0xE8, 0xE8 );
 	entry_col = SDL_MapRGB( display->format, 0xB8, 0xB8, 0xB8 );
 	sel_col = SDL_MapRGB( display->format, 0xFF, 0xFF, 0x00 );
@@ -1034,7 +1051,14 @@ void	Render( Green_RTD *rtd )
 	rect.w = display->w;
 	rect.h = display->h;
 	if (rtd->night)
-		SDL_FillRect( display, &rect, SDL_MapRGB( display->format, 0x10, 0x10, 0x10 ) );
+	{
+		const Green_Theme	*theme = Green_GetTheme( rtd );
+		
+		if (theme)
+			SDL_FillRect( display, &rect, SDL_MapRGB( display->format, theme->background.r, theme->background.g, theme->background.b ) );
+		else
+			SDL_FillRect( display, &rect, SDL_MapRGB( display->format, 0x10, 0x10, 0x10 ) );
+	}
 	else
 		SDL_FillRect( display, &rect, SDL_MapRGB( display->format, rtd->c_background.r, rtd->c_background.g, rtd->c_background.b ));
 	if (!Green_IsDocValid( rtd, rtd->doc_cur ))
@@ -1360,7 +1384,36 @@ RState	NormalInput( Green_RTD *rtd, SDL_Event *event, unsigned short *flags )
 			break;
 		case 'i':
 			rtd->night = !rtd->night;
+			{
+				const Green_Theme	*theme = Green_GetTheme( rtd );
+				
+				if (theme)
+					fprintf( stderr, "mode: %s theme: %s\n", rtd->night ? "dark" : "light", theme->name );
+			}
 			*flags |= FLAG_RENDER;
+			break;
+		case 't':
+			if (rtd->themes && rtd->themes_count > 1)
+			{
+				int	idx = rtd->night ? rtd->theme_dark_cur : rtd->theme_light_cur,
+					i;
+				
+				for (i = 1; i < rtd->themes_count; i++)
+				{
+					int	next = (idx + i) % rtd->themes_count;
+					
+					if (rtd->themes[next].dark == rtd->night)
+					{
+						if (rtd->night)
+							rtd->theme_dark_cur = next;
+						else
+							rtd->theme_light_cur = next;
+						fprintf( stderr, "theme: %s\n", rtd->themes[next].name );
+						break;
+					}
+				}
+				*flags |= FLAG_RENDER;
+			}
 			break;
 		default:
 			break;
